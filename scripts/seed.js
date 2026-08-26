@@ -61,6 +61,19 @@ async function main() {
     },
   ];
 
+  // If ADMIN_EMAIL is set and isn't one of the demo accounts above, create
+  // it too so you can log in as the admin right away.
+  if (
+    process.env.ADMIN_EMAIL &&
+    !demoUsers.some((u) => u.email === process.env.ADMIN_EMAIL.toLowerCase())
+  ) {
+    demoUsers.push({
+      full_name: "Admin",
+      email: process.env.ADMIN_EMAIL.toLowerCase(),
+      can_access_documents: true,
+    });
+  }
+
   for (const user of demoUsers) {
     const existing = await sql`SELECT id FROM users WHERE email = ${user.email}`;
     if (existing.length > 0) {

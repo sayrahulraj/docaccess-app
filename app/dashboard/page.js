@@ -52,6 +52,24 @@ export default function DashboardPage() {
             </div>
           </Link>
 
+          <Link
+            href="/permissions"
+            className="group card-shell flex flex-col gap-4 border border-transparent p-6 transition hover:-translate-y-0.5 hover:border-teal/40"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-navy text-teal transition group-hover:bg-teal group-hover:text-white">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M9 12l2 2 4-4" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="font-display text-lg font-semibold text-navy">Permissions</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Manage which accounts can access documents. Admin only.
+              </p>
+            </div>
+          </Link>
+
           <div className="card-shell flex flex-col gap-4 border border-transparent p-6 opacity-60">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
               <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
