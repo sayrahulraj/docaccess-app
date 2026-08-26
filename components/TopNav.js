@@ -31,7 +31,7 @@ export default function TopNav() {
     <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/dashboard" className="font-display text-lg font-semibold text-navy">
-          Borcelle<span className="text-teal">.</span>
+          RudraDev<span className="text-teal">.</span>
         </Link>
         <div className="flex items-center gap-4">
           {user && (

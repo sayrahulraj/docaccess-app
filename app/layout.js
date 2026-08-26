@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Borcelle DocAccess",
+  title: "RudraDev DocAccess",
   description: "Secure document access portal",
 };
 
