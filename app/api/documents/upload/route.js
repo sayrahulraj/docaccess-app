@@ -16,7 +16,7 @@ const ALLOWED_TYPES = new Set([
 // 4.5MB, so this is set conservatively below that. If you need larger
 // files, switch to presigned direct-to-R2 uploads instead of proxying
 // through this route (see README).
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 4MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
 export async function POST(request) {
   const user = await getCurrentUser();
@@ -54,7 +54,7 @@ export async function POST(request) {
   }
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
-      { error: "File is too large. Maximum size is 4MB." },
+      { error: "File is too large. Maximum size is 2MB." },
       { status: 400 }
     );
   }
