@@ -68,7 +68,7 @@ function ResetPasswordForm() {
       <div className="card-shell flex w-full max-w-3xl flex-col md:flex-row">
         <div className="flex w-full flex-col items-center justify-center gap-6 bg-navy px-8 py-14 md:w-2/5">
           <span className="self-start font-display text-lg font-semibold tracking-wide text-white">
-            Borcelle.
+            Rudra Dev.
           </span>
           <AuthIllustration variant="signup" />
         </div>
