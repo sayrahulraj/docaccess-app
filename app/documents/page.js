@@ -15,6 +15,11 @@ export default function DocumentsPage() {
   const [status, setStatus] = useState(STATUS.LOADING);
   const [persons, setPersons] = useState([]);
 
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [personName, setPersonName] = useState("");
+  const [addError, setAddError] = useState("");
+  const [addLoading, setAddLoading] = useState(false);
+
   useEffect(() => {
     let active = true;
 
@@ -56,13 +61,57 @@ export default function DocumentsPage() {
     };
   }, []);
 
+  async function handleAddPerson(e) {
+    e.preventDefault();
+    setAddError("");
+
+    if (!personName.trim()) {
+      setAddError("Please enter a name.");
+      return;
+    }
+
+    setAddLoading(true);
+    try {
+      const res = await fetch("/api/persons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: personName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAddError(data.error || "Could not add person.");
+        return;
+      }
+      setPersons((list) => [data.person, ...list]);
+      setPersonName("");
+      setShowAddModal(false);
+    } catch (err) {
+      setAddError("Could not reach the server. Please try again.");
+    } finally {
+      setAddLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <TopNav />
 
       <main className="mx-auto max-w-6xl px-6 py-12">
-        <h1 className="font-display text-3xl font-semibold text-navy">Access Document</h1>
-        <p className="mt-2 text-slate-500">Select a person to view their documents.</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="font-display text-3xl font-semibold text-navy">
+              Access Document
+            </h1>
+            <p className="mt-2 text-slate-500">
+              People you&apos;ve added. Only you can see the ones you create.
+            </p>
+          </div>
+          {status === STATUS.ALLOWED && (
+            <button onClick={() => setShowAddModal(true)} className="btn-primary w-auto px-5">
+              + Add Person
+            </button>
+          )}
+        </div>
 
         {status === STATUS.LOADING && (
           <p className="mt-10 text-sm text-slate-400">Checking your access...</p>
@@ -92,7 +141,19 @@ export default function DocumentsPage() {
           </div>
         )}
 
-        {status === STATUS.ALLOWED && (
+        {status === STATUS.ALLOWED && persons.length === 0 && (
+          <div className="mt-10 card-shell flex flex-col items-center gap-2 px-8 py-14 text-center">
+            <h3 className="font-display text-lg font-semibold text-navy">
+              You haven&apos;t added anyone yet
+            </h3>
+            <p className="text-sm text-slate-500">
+              Click <span className="font-medium text-navy">+ Add Person</span> to create
+              your first one.
+            </p>
+          </div>
+        )}
+
+        {status === STATUS.ALLOWED && persons.length > 0 && (
           <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {persons.map((person) => (
               <Link
@@ -121,6 +182,57 @@ export default function DocumentsPage() {
           </div>
         )}
       </main>
+
+      {showAddModal && (
+        <div
+          className="fixed inset-0 z-20 flex items-center justify-center bg-navy/60 p-6"
+          onClick={() => setShowAddModal(false)}
+        >
+          <div
+            className="card-shell w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-lg font-semibold text-navy">Add Person</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              You&apos;ll be the only one who can see this person&apos;s documents.
+            </p>
+
+            <form onSubmit={handleAddPerson} className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-navy">Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Rahul Raj"
+                  className="input-field"
+                  value={personName}
+                  onChange={(e) => setPersonName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              {addError && (
+                <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {addError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary flex-1" disabled={addLoading}>
+                  {addLoading ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

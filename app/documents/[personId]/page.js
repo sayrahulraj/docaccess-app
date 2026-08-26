@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import TopNav from "@/components/TopNav";
 
@@ -45,20 +45,35 @@ function getDriveDownloadUrl(fileId) {
   return `https://drive.google.com/uc?export=download&id=${fileId}`;
 }
 
+function formatDate(dateString) {
+  return new Date(dateString).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+const emptyForm = { name: "", url: "", file: null };
+
 export default function PersonDocumentsPage() {
   const { personId } = useParams();
-  const router = useRouter();
 
   const [status, setStatus] = useState(STATUS.LOADING);
   const [person, setPerson] = useState(null);
   const [documents, setDocuments] = useState([]);
 
   const [viewDoc, setViewDoc] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: "", url: "" });
-  const [addError, setAddError] = useState("");
-  const [addLoading, setAddLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
+
+  // Shared Add/Edit document modal state
+  const [modalMode, setModalMode] = useState(null); // null | "add" | "edit"
+  const [editingDocId, setEditingDocId] = useState(null);
+  const [inputMode, setInputMode] = useState("link"); // "link" | "file"
+  const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef(null);
 
   const load = useCallback(async () => {
     setStatus(STATUS.LOADING);
@@ -97,38 +112,112 @@ export default function PersonDocumentsPage() {
     load();
   }, [load]);
 
-  async function handleAddDocument(e) {
-    e.preventDefault();
-    setAddError("");
+  function openAddModal() {
+    setModalMode("add");
+    setEditingDocId(null);
+    setInputMode("link");
+    setForm(emptyForm);
+    setFormError("");
+  }
 
-    if (!addForm.name.trim() || !addForm.url.trim()) {
-      setAddError("Please provide both a document name and a URL.");
+  function openEditModal(doc) {
+    setModalMode("edit");
+    setEditingDocId(doc.id);
+    setInputMode("link");
+    setForm({ name: doc.name, url: doc.url, file: null });
+    setFormError("");
+  }
+
+  function closeModal() {
+    setModalMode(null);
+    setEditingDocId(null);
+    setForm(emptyForm);
+    setFormError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleFormSubmit(e) {
+    e.preventDefault();
+    setFormError("");
+
+    if (!form.name.trim()) {
+      setFormError("Please enter a document name.");
       return;
     }
 
-    setAddLoading(true);
-    try {
-      const res = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          personId,
-          name: addForm.name.trim(),
-          url: addForm.url.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAddError(data.error || "Could not add document.");
+    let finalUrl = form.url.trim();
+
+    if (inputMode === "file") {
+      if (!form.file) {
+        setFormError("Please choose a PDF or image file to upload.");
         return;
       }
-      setDocuments((docs) => [data.document, ...docs]);
-      setAddForm({ name: "", url: "" });
-      setShowAddModal(false);
+      setUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append("file", form.file);
+        const uploadRes = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: fd,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+          setFormError(uploadData.error || "Could not upload the file.");
+          return;
+        }
+        finalUrl = uploadData.url;
+      } catch (err) {
+        setFormError("Could not reach the server while uploading. Please try again.");
+        return;
+      } finally {
+        setUploading(false);
+      }
+    } else if (!finalUrl) {
+      setFormError("Please enter a URL.");
+      return;
+    } else {
+      try {
+        new URL(finalUrl);
+      } catch {
+        setFormError("Please enter a valid URL.");
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      if (modalMode === "add") {
+        const res = await fetch("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ personId, name: form.name.trim(), url: finalUrl }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setFormError(data.error || "Could not add document.");
+          return;
+        }
+        setDocuments((docs) => [data.document, ...docs]);
+      } else {
+        const res = await fetch(`/api/documents/${editingDocId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: form.name.trim(), url: finalUrl }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setFormError(data.error || "Could not update document.");
+          return;
+        }
+        setDocuments((docs) =>
+          docs.map((d) => (d.id === data.document.id ? data.document : d))
+        );
+      }
+      closeModal();
     } catch (err) {
-      setAddError("Could not reach the server. Please try again.");
+      setFormError("Could not reach the server. Please try again.");
     } finally {
-      setAddLoading(false);
+      setSaving(false);
     }
   }
 
@@ -150,9 +239,6 @@ export default function PersonDocumentsPage() {
       a.remove();
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      // Cross-origin restrictions (common for Drive and many external hosts)
-      // block a JS fetch, so fall back to opening the download link directly
-      // — the browser handles the download itself.
       window.open(downloadUrl, "_blank", "noopener,noreferrer");
     } finally {
       setDownloadingId(null);
@@ -206,10 +292,7 @@ export default function PersonDocumentsPage() {
                   {documents.length} {documents.length === 1 ? "document" : "documents"}
                 </p>
               </div>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="btn-primary w-auto px-5"
-              >
+              <button onClick={openAddModal} className="btn-primary w-auto px-5">
                 + Add Document
               </button>
             </div>
@@ -227,17 +310,27 @@ export default function PersonDocumentsPage() {
               <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {documents.map((doc) => (
                   <div key={doc.id} className="card-shell flex flex-col gap-4 p-5">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal/10 text-teal">
-                        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                          <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
-                          <path d="M14 3v5h5" />
-                        </svg>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal/10 text-teal">
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                            <path d="M14 3v5h5" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate font-medium text-navy">{doc.name}</h3>
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            Added {formatDate(doc.created_at)}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate font-medium text-navy">{doc.name}</h3>
-                        <p className="truncate text-xs text-slate-400">{doc.url}</p>
-                      </div>
+                      <button
+                        onClick={() => openEditModal(doc)}
+                        className="shrink-0 text-xs font-medium text-slate-400 hover:text-teal"
+                      >
+                        Edit
+                      </button>
                     </div>
                     <div className="flex gap-3">
                       <button
@@ -262,6 +355,7 @@ export default function PersonDocumentsPage() {
         )}
       </main>
 
+      {/* View modal */}
       {viewDoc && (
         <div
           className="fixed inset-0 z-20 flex items-center justify-center bg-navy/60 p-6"
@@ -285,8 +379,6 @@ export default function PersonDocumentsPage() {
               {(() => {
                 const driveFileId = getGoogleDriveFileId(viewDoc.url);
                 if (driveFileId) {
-                  // Google Drive's own preview endpoint renders images, PDFs,
-                  // and most Office/Docs files inline inside an iframe.
                   return (
                     <iframe
                       src={getDrivePreviewUrl(driveFileId)}
@@ -303,6 +395,15 @@ export default function PersonDocumentsPage() {
                       src={viewDoc.url}
                       alt={viewDoc.name}
                       className="max-h-[60vh] max-w-full rounded-lg object-contain"
+                    />
+                  );
+                }
+                if (/\.pdf(\?.*)?$/i.test(viewDoc.url)) {
+                  return (
+                    <iframe
+                      src={viewDoc.url}
+                      title={viewDoc.name}
+                      className="h-[60vh] w-full rounded-lg border-0"
                     />
                   );
                 }
@@ -327,21 +428,45 @@ export default function PersonDocumentsPage() {
         </div>
       )}
 
-      {showAddModal && (
+      {/* Add / Edit document modal */}
+      {modalMode && (
         <div
           className="fixed inset-0 z-20 flex items-center justify-center bg-navy/60 p-6"
-          onClick={() => setShowAddModal(false)}
+          onClick={closeModal}
         >
           <div
             className="card-shell w-full max-w-md p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-display text-lg font-semibold text-navy">Add Document</h3>
+            <h3 className="font-display text-lg font-semibold text-navy">
+              {modalMode === "add" ? "Add Document" : "Edit Document"}
+            </h3>
             <p className="mt-1 text-sm text-slate-500">
-              For {person?.name}. This will be saved to the database.
+              For {person?.name}. This is saved to the database.
             </p>
 
-            <form onSubmit={handleAddDocument} className="mt-5 space-y-4">
+            <div className="mt-4 flex rounded-lg bg-slate-100 p-1 text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => setInputMode("link")}
+                className={`flex-1 rounded-md py-2 transition ${
+                  inputMode === "link" ? "bg-white text-navy shadow-soft" : "text-slate-500"
+                }`}
+              >
+                Paste a link
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("file")}
+                className={`flex-1 rounded-md py-2 transition ${
+                  inputMode === "file" ? "bg-white text-navy shadow-soft" : "text-slate-500"
+                }`}
+              >
+                Upload file
+              </button>
+            </div>
+
+            <form onSubmit={handleFormSubmit} className="mt-5 space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-navy">
                   Document Name
@@ -351,40 +476,60 @@ export default function PersonDocumentsPage() {
                   required
                   placeholder="e.g. Aadhar Card"
                   className="input-field"
-                  value={addForm.name}
-                  onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-navy">
-                  Document URL
-                </label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://..."
-                  className="input-field"
-                  value={addForm.url}
-                  onChange={(e) => setAddForm((f) => ({ ...f, url: e.target.value }))}
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 />
               </div>
 
-              {addError && (
+              {inputMode === "link" ? (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-navy">
+                    Document URL
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    className="input-field"
+                    value={form.url}
+                    onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-navy">
+                    PDF or Image File
+                  </label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp,image/gif"
+                    className="input-field file:mr-3 file:rounded-md file:border-0 file:bg-navy file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white"
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, file: e.target.files?.[0] || null }))
+                    }
+                  />
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    PDF, PNG, JPG, WEBP, or GIF — up to 4MB.
+                  </p>
+                </div>
+              )}
+
+              {formError && (
                 <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-                  {addError}
+                  {formError}
                 </p>
               )}
 
               <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="btn-secondary flex-1"
-                >
+                <button type="button" onClick={closeModal} className="btn-secondary flex-1">
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary flex-1" disabled={addLoading}>
-                  {addLoading ? "Saving..." : "Save"}
+                <button
+                  type="submit"
+                  className="btn-primary flex-1"
+                  disabled={uploading || saving}
+                >
+                  {uploading ? "Uploading..." : saving ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>

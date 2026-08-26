@@ -21,8 +21,13 @@ export async function GET(request) {
     return NextResponse.json({ error: "personId is required." }, { status: 400 });
   }
 
-  const person = await sql`SELECT id, name FROM persons WHERE id = ${personId} LIMIT 1`;
-  if (person.length === 0) {
+  const person = await sql`
+    SELECT id, name, owner_id FROM persons WHERE id = ${personId} LIMIT 1
+  `;
+
+  // Treat "exists but isn't yours" the same as "doesn't exist" so ownership
+  // isn't leaked to other users.
+  if (person.length === 0 || person[0].owner_id !== user.id) {
     return NextResponse.json({ error: "Person not found." }, { status: 404 });
   }
 
@@ -59,14 +64,15 @@ export async function POST(request) {
     }
 
     try {
-      // Validate the URL is well-formed.
       new URL(url);
     } catch {
       return NextResponse.json({ error: "Please provide a valid URL." }, { status: 400 });
     }
 
-    const person = await sql`SELECT id FROM persons WHERE id = ${personId} LIMIT 1`;
-    if (person.length === 0) {
+    const person = await sql`
+      SELECT id, owner_id FROM persons WHERE id = ${personId} LIMIT 1
+    `;
+    if (person.length === 0 || person[0].owner_id !== user.id) {
       return NextResponse.json({ error: "Person not found." }, { status: 404 });
     }
 
