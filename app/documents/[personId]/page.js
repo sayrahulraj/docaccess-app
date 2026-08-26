@@ -17,6 +17,34 @@ function isImageUrl(url) {
   return /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(url);
 }
 
+// Google Drive "share" links (e.g. https://drive.google.com/file/d/FILE_ID/view)
+// aren't direct file URLs, so they need converting before they can be
+// previewed or downloaded in the browser.
+function getGoogleDriveFileId(url) {
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)(drive|docs)\.google\.com$/.test(u.hostname)) return null;
+
+    const pathMatch = u.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (pathMatch) return pathMatch[1];
+
+    const idParam = u.searchParams.get("id");
+    if (idParam) return idParam;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function getDrivePreviewUrl(fileId) {
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
+
+function getDriveDownloadUrl(fileId) {
+  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
+
 export default function PersonDocumentsPage() {
   const { personId } = useParams();
   const router = useRouter();
@@ -106,8 +134,11 @@ export default function PersonDocumentsPage() {
 
   async function handleDownload(doc) {
     setDownloadingId(doc.id);
+    const driveFileId = getGoogleDriveFileId(doc.url);
+    const downloadUrl = driveFileId ? getDriveDownloadUrl(driveFileId) : doc.url;
+
     try {
-      const res = await fetch(doc.url);
+      const res = await fetch(downloadUrl);
       if (!res.ok) throw new Error("fetch failed");
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -119,8 +150,10 @@ export default function PersonDocumentsPage() {
       a.remove();
       URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      // Cross-origin or network issue: fall back to opening the file directly.
-      window.open(doc.url, "_blank", "noopener,noreferrer");
+      // Cross-origin restrictions (common for Drive and many external hosts)
+      // block a JS fetch, so fall back to opening the download link directly
+      // — the browser handles the download itself.
+      window.open(downloadUrl, "_blank", "noopener,noreferrer");
     } finally {
       setDownloadingId(null);
     }
@@ -249,28 +282,46 @@ export default function PersonDocumentsPage() {
               </button>
             </div>
             <div className="flex max-h-[70vh] items-center justify-center bg-slate-50 p-4">
-              {isImageUrl(viewDoc.url) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={viewDoc.url}
-                  alt={viewDoc.name}
-                  className="max-h-[60vh] max-w-full rounded-lg object-contain"
-                />
-              ) : (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <p className="text-sm text-slate-500">
-                    A preview isn&apos;t available for this file type.
-                  </p>
-                  <a
-                    href={viewDoc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-teal text-sm"
-                  >
-                    Open in a new tab
-                  </a>
-                </div>
-              )}
+              {(() => {
+                const driveFileId = getGoogleDriveFileId(viewDoc.url);
+                if (driveFileId) {
+                  // Google Drive's own preview endpoint renders images, PDFs,
+                  // and most Office/Docs files inline inside an iframe.
+                  return (
+                    <iframe
+                      src={getDrivePreviewUrl(driveFileId)}
+                      title={viewDoc.name}
+                      className="h-[60vh] w-full rounded-lg border-0"
+                      allow="autoplay"
+                    />
+                  );
+                }
+                if (isImageUrl(viewDoc.url)) {
+                  return (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={viewDoc.url}
+                      alt={viewDoc.name}
+                      className="max-h-[60vh] max-w-full rounded-lg object-contain"
+                    />
+                  );
+                }
+                return (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <p className="text-sm text-slate-500">
+                      A preview isn&apos;t available for this file type.
+                    </p>
+                    <a
+                      href={viewDoc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link-teal text-sm"
+                    >
+                      Open in a new tab
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
