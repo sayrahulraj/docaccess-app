@@ -16,18 +16,12 @@ const ALLOWED_TYPES = new Set([
 // 4.5MB, so this is set conservatively below that. If you need larger
 // files, switch to presigned direct-to-R2 uploads instead of proxying
 // through this route (see README).
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 4MB
 
 export async function POST(request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  }
-  if (!user.can_access_documents) {
-    return NextResponse.json(
-      { error: "You don't have permission to access documents." },
-      { status: 403 }
-    );
   }
 
   if (!R2_BUCKET || !R2_PUBLIC_URL) {

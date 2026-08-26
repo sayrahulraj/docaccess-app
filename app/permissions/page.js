@@ -89,7 +89,8 @@ export default function PermissionsPage() {
       <main className="mx-auto max-w-4xl px-6 py-12">
         <h1 className="font-display text-3xl font-semibold text-navy">Permissions</h1>
         <p className="mt-2 text-slate-500">
-          Control which accounts are allowed to access documents.
+          Control whether each account can see everyone&apos;s documents, or only
+          their own.
         </p>
 
         {status === STATUS.LOADING && (
@@ -127,7 +128,7 @@ export default function PermissionsPage() {
                 <tr>
                   <th className="px-5 py-3 font-medium">Name</th>
                   <th className="px-5 py-3 font-medium">Email</th>
-                  <th className="px-5 py-3 font-medium">Document Access</th>
+                  <th className="px-5 py-3 font-medium">Document Visibility</th>
                   <th className="px-5 py-3 font-medium text-right">Action</th>
                 </tr>
               </thead>
@@ -144,7 +145,7 @@ export default function PermissionsPage() {
                             : "bg-slate-100 text-slate-500"
                         }`}
                       >
-                        {u.can_access_documents ? "Allowed" : "Not allowed"}
+                        {u.can_access_documents ? "Everyone's documents" : "Own documents only"}
                       </span>
                     </td>
                     <td className="px-5 py-4 text-right">
@@ -189,7 +190,7 @@ export default function PermissionsPage() {
                   className="accent-teal"
                 />
                 <span className="text-sm font-medium text-navy">
-                  Allowed — can access documents
+                  Full access — can view everyone&apos;s documents
                 </span>
               </label>
               <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-4 py-3 has-[:checked]:border-teal has-[:checked]:bg-teal/5">
@@ -201,7 +202,7 @@ export default function PermissionsPage() {
                   className="accent-teal"
                 />
                 <span className="text-sm font-medium text-navy">
-                  Not allowed — no document access
+                  Limited — can view only their own documents
                 </span>
               </label>
             </div>

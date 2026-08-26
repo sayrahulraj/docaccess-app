@@ -6,14 +6,14 @@ import TopNav from "@/components/TopNav";
 
 const STATUS = {
   LOADING: "loading",
-  DENIED: "denied",
-  ALLOWED: "allowed",
+  READY: "ready",
   ERROR: "error",
 };
 
 export default function DocumentsPage() {
   const [status, setStatus] = useState(STATUS.LOADING);
   const [persons, setPersons] = useState([]);
+  const [scope, setScope] = useState("own");
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [personName, setPersonName] = useState("");
@@ -25,30 +25,16 @@ export default function DocumentsPage() {
 
     async function load() {
       try {
-        const accessRes = await fetch("/api/documents/access");
-        const accessData = await accessRes.json();
-
-        if (!accessRes.ok) {
+        const res = await fetch("/api/persons");
+        const data = await res.json();
+        if (!res.ok) {
           if (active) setStatus(STATUS.ERROR);
           return;
         }
-
-        if (!accessData.allowed) {
-          if (active) setStatus(STATUS.DENIED);
-          return;
-        }
-
-        const personsRes = await fetch("/api/persons");
-        const personsData = await personsRes.json();
-
-        if (!personsRes.ok) {
-          if (active) setStatus(STATUS.ERROR);
-          return;
-        }
-
         if (active) {
-          setPersons(personsData.persons || []);
-          setStatus(STATUS.ALLOWED);
+          setPersons(data.persons || []);
+          setScope(data.scope || "own");
+          setStatus(STATUS.READY);
         }
       } catch (err) {
         if (active) setStatus(STATUS.ERROR);
@@ -103,48 +89,30 @@ export default function DocumentsPage() {
               Access Document
             </h1>
             <p className="mt-2 text-slate-500">
-              People you&apos;ve added. Only you can see the ones you create.
+              {status === STATUS.READY && scope === "all"
+                ? "You can view documents added by everyone."
+                : "You can view documents you've added yourself."}
             </p>
           </div>
-          {status === STATUS.ALLOWED && (
-            <button onClick={() => setShowAddModal(true)} className="btn-primary w-auto px-5">
-              + Add Person
-            </button>
-          )}
+          <button onClick={() => setShowAddModal(true)} className="btn-primary w-auto px-5">
+            + Add Person
+          </button>
         </div>
 
         {status === STATUS.LOADING && (
-          <p className="mt-10 text-sm text-slate-400">Checking your access...</p>
+          <p className="mt-10 text-sm text-slate-400">Loading...</p>
         )}
 
         {status === STATUS.ERROR && (
           <p className="mt-10 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
-            Something went wrong while checking your access. Please try again.
+            Something went wrong. Please try again.
           </p>
         )}
 
-        {status === STATUS.DENIED && (
-          <div className="mt-10 card-shell flex flex-col items-center gap-3 px-8 py-14 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-500">
-              <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <rect x="5" y="11" width="14" height="9" rx="2" />
-                <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-              </svg>
-            </div>
-            <h2 className="font-display text-xl font-semibold text-navy">
-              You don&apos;t have permission to access document
-            </h2>
-            <p className="max-w-md text-sm text-slate-500">
-              Your account doesn&apos;t currently have document access. Please contact an
-              administrator if you believe this is a mistake.
-            </p>
-          </div>
-        )}
-
-        {status === STATUS.ALLOWED && persons.length === 0 && (
+        {status === STATUS.READY && persons.length === 0 && (
           <div className="mt-10 card-shell flex flex-col items-center gap-2 px-8 py-14 text-center">
             <h3 className="font-display text-lg font-semibold text-navy">
-              You haven&apos;t added anyone yet
+              No one added yet
             </h3>
             <p className="text-sm text-slate-500">
               Click <span className="font-medium text-navy">+ Add Person</span> to create
@@ -153,7 +121,7 @@ export default function DocumentsPage() {
           </div>
         )}
 
-        {status === STATUS.ALLOWED && persons.length > 0 && (
+        {status === STATUS.READY && persons.length > 0 && (
           <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {persons.map((person) => (
               <Link
@@ -176,6 +144,11 @@ export default function DocumentsPage() {
                     {person.document_count}{" "}
                     {person.document_count === 1 ? "document" : "documents"}
                   </p>
+                  {!person.is_owner && person.owner_name && (
+                    <p className="mt-1 text-[11px] font-medium text-teal">
+                      Added by {person.owner_name}
+                    </p>
+                  )}
                 </div>
               </Link>
             ))}
@@ -194,7 +167,7 @@ export default function DocumentsPage() {
           >
             <h3 className="font-display text-lg font-semibold text-navy">Add Person</h3>
             <p className="mt-1 text-sm text-slate-500">
-              You&apos;ll be the only one who can see this person&apos;s documents.
+              You&apos;ll always be able to manage this person&apos;s documents.
             </p>
 
             <form onSubmit={handleAddPerson} className="mt-5 space-y-4">

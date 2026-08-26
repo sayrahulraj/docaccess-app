@@ -2,16 +2,33 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { sql } from "@/lib/db";
 
+async function getOwnedDocumentOrError(documentId, userId) {
+  const rows = await sql`
+    SELECT d.id, p.owner_id
+    FROM documents d
+    JOIN persons p ON p.id = d.person_id
+    WHERE d.id = ${documentId}
+    LIMIT 1
+  `;
+
+  if (rows.length === 0) {
+    return { error: NextResponse.json({ error: "Document not found." }, { status: 404 }) };
+  }
+  if (rows[0].owner_id !== userId) {
+    return {
+      error: NextResponse.json(
+        { error: "You can only edit or delete documents you created." },
+        { status: 403 }
+      ),
+    };
+  }
+  return { ok: true };
+}
+
 export async function PATCH(request, { params }) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  }
-  if (!user.can_access_documents) {
-    return NextResponse.json(
-      { error: "You don't have permission to access documents." },
-      { status: 403 }
-    );
   }
 
   const { documentId } = params;
@@ -38,19 +55,8 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: "Please provide a valid URL." }, { status: 400 });
   }
 
-  // Confirm this document belongs to a person owned by the current user
-  // before allowing the edit.
-  const rows = await sql`
-    SELECT d.id, p.owner_id
-    FROM documents d
-    JOIN persons p ON p.id = d.person_id
-    WHERE d.id = ${documentId}
-    LIMIT 1
-  `;
-
-  if (rows.length === 0 || rows[0].owner_id !== user.id) {
-    return NextResponse.json({ error: "Document not found." }, { status: 404 });
-  }
+  const check = await getOwnedDocumentOrError(documentId, user.id);
+  if (check.error) return check.error;
 
   const updated = await sql`
     UPDATE documents
@@ -60,4 +66,20 @@ export async function PATCH(request, { params }) {
   `;
 
   return NextResponse.json({ document: updated[0] });
+}
+
+export async function DELETE(request, { params }) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
+  const { documentId } = params;
+
+  const check = await getOwnedDocumentOrError(documentId, user.id);
+  if (check.error) return check.error;
+
+  await sql`DELETE FROM documents WHERE id = ${documentId}`;
+
+  return NextResponse.json({ message: "Document deleted." });
 }

@@ -7,12 +7,6 @@ export async function GET(request) {
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
-  if (!user.can_access_documents) {
-    return NextResponse.json(
-      { error: "You don't have permission to access documents." },
-      { status: 403 }
-    );
-  }
 
   const { searchParams } = new URL(request.url);
   const personId = searchParams.get("personId");
@@ -25,9 +19,14 @@ export async function GET(request) {
     SELECT id, name, owner_id FROM persons WHERE id = ${personId} LIMIT 1
   `;
 
-  // Treat "exists but isn't yours" the same as "doesn't exist" so ownership
-  // isn't leaked to other users.
-  if (person.length === 0 || person[0].owner_id !== user.id) {
+  if (person.length === 0) {
+    return NextResponse.json({ error: "Person not found." }, { status: 404 });
+  }
+
+  const isOwner = person[0].owner_id === user.id;
+
+  // Viewable if you own it, or if you have full (can_access_documents) scope.
+  if (!isOwner && !user.can_access_documents) {
     return NextResponse.json({ error: "Person not found." }, { status: 404 });
   }
 
@@ -38,19 +37,13 @@ export async function GET(request) {
     ORDER BY created_at DESC
   `;
 
-  return NextResponse.json({ person: person[0], documents });
+  return NextResponse.json({ person: person[0], documents, isOwner });
 }
 
 export async function POST(request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  }
-  if (!user.can_access_documents) {
-    return NextResponse.json(
-      { error: "You don't have permission to access documents." },
-      { status: 403 }
-    );
   }
 
   try {
@@ -72,8 +65,18 @@ export async function POST(request) {
     const person = await sql`
       SELECT id, owner_id FROM persons WHERE id = ${personId} LIMIT 1
     `;
-    if (person.length === 0 || person[0].owner_id !== user.id) {
+    if (person.length === 0) {
       return NextResponse.json({ error: "Person not found." }, { status: 404 });
+    }
+
+    // Adding documents is still owner-only, even for users with full
+    // viewing access — viewing everyone's documents doesn't mean you can
+    // modify someone else's.
+    if (person[0].owner_id !== user.id) {
+      return NextResponse.json(
+        { error: "You can only add documents to people you created." },
+        { status: 403 }
+      );
     }
 
     const inserted = await sql`

@@ -7,7 +7,6 @@ import TopNav from "@/components/TopNav";
 
 const STATUS = {
   LOADING: "loading",
-  DENIED: "denied",
   READY: "ready",
   NOT_FOUND: "not_found",
   ERROR: "error",
@@ -17,9 +16,6 @@ function isImageUrl(url) {
   return /\.(png|jpe?g|gif|webp|svg|bmp)(\?.*)?$/i.test(url);
 }
 
-// Google Drive "share" links (e.g. https://drive.google.com/file/d/FILE_ID/view)
-// aren't direct file URLs, so they need converting before they can be
-// previewed or downloaded in the browser.
 function getGoogleDriveFileId(url) {
   try {
     const u = new URL(url);
@@ -61,14 +57,15 @@ export default function PersonDocumentsPage() {
   const [status, setStatus] = useState(STATUS.LOADING);
   const [person, setPerson] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [isOwner, setIsOwner] = useState(false);
 
   const [viewDoc, setViewDoc] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  // Shared Add/Edit document modal state
   const [modalMode, setModalMode] = useState(null); // null | "add" | "edit"
   const [editingDocId, setEditingDocId] = useState(null);
-  const [inputMode, setInputMode] = useState("link"); // "link" | "file"
+  const [inputMode, setInputMode] = useState("link");
   const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -78,17 +75,6 @@ export default function PersonDocumentsPage() {
   const load = useCallback(async () => {
     setStatus(STATUS.LOADING);
     try {
-      const accessRes = await fetch("/api/documents/access");
-      const accessData = await accessRes.json();
-      if (!accessRes.ok) {
-        setStatus(STATUS.ERROR);
-        return;
-      }
-      if (!accessData.allowed) {
-        setStatus(STATUS.DENIED);
-        return;
-      }
-
       const docsRes = await fetch(`/api/documents?personId=${personId}`);
       if (docsRes.status === 404) {
         setStatus(STATUS.NOT_FOUND);
@@ -102,6 +88,7 @@ export default function PersonDocumentsPage() {
 
       setPerson(docsData.person);
       setDocuments(docsData.documents || []);
+      setIsOwner(Boolean(docsData.isOwner));
       setStatus(STATUS.READY);
     } catch (err) {
       setStatus(STATUS.ERROR);
@@ -221,6 +208,28 @@ export default function PersonDocumentsPage() {
     }
   }
 
+  async function handleDelete(doc) {
+    const confirmed = window.confirm(
+      `Delete "${doc.name}"? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(doc.id);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Could not delete document.");
+        return;
+      }
+      setDocuments((docs) => docs.filter((d) => d.id !== doc.id));
+    } catch (err) {
+      alert("Could not reach the server. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function handleDownload(doc) {
     setDownloadingId(doc.id);
     const driveFileId = getGoogleDriveFileId(doc.url);
@@ -258,20 +267,9 @@ export default function PersonDocumentsPage() {
           <p className="mt-6 text-sm text-slate-400">Loading documents...</p>
         )}
 
-        {status === STATUS.DENIED && (
-          <div className="mt-8 card-shell flex flex-col items-center gap-3 px-8 py-14 text-center">
-            <h2 className="font-display text-xl font-semibold text-navy">
-              You don&apos;t have permission to access document
-            </h2>
-            <p className="max-w-md text-sm text-slate-500">
-              Your account doesn&apos;t currently have document access.
-            </p>
-          </div>
-        )}
-
         {status === STATUS.NOT_FOUND && (
           <p className="mt-6 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            This person could not be found.
+            This person could not be found, or you don&apos;t have permission to view them.
           </p>
         )}
 
@@ -290,12 +288,23 @@ export default function PersonDocumentsPage() {
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
                   {documents.length} {documents.length === 1 ? "document" : "documents"}
+                  {!isOwner && " · view only"}
                 </p>
               </div>
-              <button onClick={openAddModal} className="btn-primary w-auto px-5">
-                + Add Document
-              </button>
+              {isOwner && (
+                <button onClick={openAddModal} className="btn-primary w-auto px-5">
+                  + Add Document
+                </button>
+              )}
             </div>
+
+            {!isOwner && (
+              <p className="mt-4 rounded-lg bg-teal/10 px-4 py-3 text-sm text-teal-dark">
+                You&apos;re viewing this because your account can see everyone&apos;s
+                documents. Only the person who created this entry can add, edit, or
+                delete documents here.
+              </p>
+            )}
 
             {documents.length === 0 ? (
               <div className="mt-10 card-shell flex flex-col items-center gap-2 px-8 py-14 text-center">
@@ -303,7 +312,9 @@ export default function PersonDocumentsPage() {
                   No documents yet
                 </h3>
                 <p className="text-sm text-slate-500">
-                  Add the first document for {person?.name} using the button above.
+                  {isOwner
+                    ? `Add the first document for ${person?.name} using the button above.`
+                    : `${person?.name} doesn't have any documents yet.`}
                 </p>
               </div>
             ) : (
@@ -325,12 +336,23 @@ export default function PersonDocumentsPage() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => openEditModal(doc)}
-                        className="shrink-0 text-xs font-medium text-slate-400 hover:text-teal"
-                      >
-                        Edit
-                      </button>
+                      {isOwner && (
+                        <div className="flex shrink-0 gap-3">
+                          <button
+                            onClick={() => openEditModal(doc)}
+                            className="text-xs font-medium text-slate-400 hover:text-teal"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(doc)}
+                            disabled={deletingId === doc.id}
+                            className="text-xs font-medium text-slate-400 hover:text-red-500 disabled:opacity-50"
+                          >
+                            {deletingId === doc.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-3">
                       <button
@@ -509,7 +531,7 @@ export default function PersonDocumentsPage() {
                     }
                   />
                   <p className="mt-1.5 text-xs text-slate-400">
-                    PDF, PNG, JPG, WEBP, or GIF — up to 4MB.
+                    PDF, PNG, JPG, WEBP, or GIF — up to 2MB.
                   </p>
                 </div>
               )}
