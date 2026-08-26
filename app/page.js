@@ -66,7 +66,7 @@ export default function LoginPage() {
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="hello@reallygreatsite.com"
+                placeholder="rudradev@gmail.com"
                 className="input-field"
                 value={form.email}
                 onChange={update("email")}

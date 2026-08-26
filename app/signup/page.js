@@ -79,7 +79,7 @@ export default function SignupPage() {
                 id="fullName"
                 type="text"
                 required
-                placeholder="Daniel Gallego"
+                placeholder="Rudra Dev"
                 className="input-field"
                 value={form.fullName}
                 onChange={update("fullName")}
@@ -95,7 +95,7 @@ export default function SignupPage() {
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="hello@reallygreatsite.com"
+                placeholder="rudradev@gmail.com"
                 className="input-field"
                 value={form.email}
                 onChange={update("email")}
