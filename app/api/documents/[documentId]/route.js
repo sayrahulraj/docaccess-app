@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { sql } from "@/lib/db";
 
-async function getOwnedDocumentOrError(documentId, userId) {
+async function findDocumentOwner(documentId) {
   const rows = await sql`
     SELECT d.id, p.owner_id
     FROM documents d
@@ -10,19 +10,7 @@ async function getOwnedDocumentOrError(documentId, userId) {
     WHERE d.id = ${documentId}
     LIMIT 1
   `;
-
-  if (rows.length === 0) {
-    return { error: NextResponse.json({ error: "Document not found." }, { status: 404 }) };
-  }
-  if (rows[0].owner_id !== userId) {
-    return {
-      error: NextResponse.json(
-        { error: "You can only edit or delete documents you created." },
-        { status: 403 }
-      ),
-    };
-  }
-  return { ok: true };
+  return rows.length > 0 ? rows[0] : null;
 }
 
 export async function PATCH(request, { params }) {
@@ -55,8 +43,18 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: "Please provide a valid URL." }, { status: 400 });
   }
 
-  const check = await getOwnedDocumentOrError(documentId, user.id);
-  if (check.error) return check.error;
+  const doc = await findDocumentOwner(documentId);
+  if (!doc) {
+    return NextResponse.json({ error: "Document not found." }, { status: 404 });
+  }
+
+  // Editing stays owner-only, even for users with full viewing access.
+  if (doc.owner_id !== user.id) {
+    return NextResponse.json(
+      { error: "You can only edit documents you created." },
+      { status: 403 }
+    );
+  }
 
   const updated = await sql`
     UPDATE documents
@@ -76,8 +74,20 @@ export async function DELETE(request, { params }) {
 
   const { documentId } = params;
 
-  const check = await getOwnedDocumentOrError(documentId, user.id);
-  if (check.error) return check.error;
+  const doc = await findDocumentOwner(documentId);
+  if (!doc) {
+    return NextResponse.json({ error: "Document not found." }, { status: 404 });
+  }
+
+  // Deleting is allowed for the document's owner, OR any user with full
+  // (can_access_documents = true) viewing access.
+  const canDelete = doc.owner_id === user.id || user.can_access_documents;
+  if (!canDelete) {
+    return NextResponse.json(
+      { error: "You don't have permission to delete this document." },
+      { status: 403 }
+    );
+  }
 
   await sql`DELETE FROM documents WHERE id = ${documentId}`;
 

@@ -37,7 +37,12 @@ export async function GET(request) {
     ORDER BY created_at DESC
   `;
 
-  return NextResponse.json({ person: person[0], documents, isOwner });
+  return NextResponse.json({
+    person: person[0],
+    documents,
+    isOwner,
+    canDeleteAny: Boolean(user.can_access_documents),
+  });
 }
 
 export async function POST(request) {

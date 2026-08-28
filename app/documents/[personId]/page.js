@@ -58,6 +58,7 @@ export default function PersonDocumentsPage() {
   const [person, setPerson] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [isOwner, setIsOwner] = useState(false);
+  const [canDeleteAny, setCanDeleteAny] = useState(false);
 
   const [viewDoc, setViewDoc] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
@@ -89,6 +90,7 @@ export default function PersonDocumentsPage() {
       setPerson(docsData.person);
       setDocuments(docsData.documents || []);
       setIsOwner(Boolean(docsData.isOwner));
+      setCanDeleteAny(Boolean(docsData.canDeleteAny));
       setStatus(STATUS.READY);
     } catch (err) {
       setStatus(STATUS.ERROR);
@@ -301,8 +303,8 @@ export default function PersonDocumentsPage() {
             {!isOwner && (
               <p className="mt-4 rounded-lg bg-teal/10 px-4 py-3 text-sm text-teal-dark">
                 You&apos;re viewing this because your account can see everyone&apos;s
-                documents. Only the person who created this entry can add, edit, or
-                delete documents here.
+                documents. Only the creator can add or edit documents here, but you
+                can delete any document since your account has full access.
               </p>
             )}
 
@@ -336,14 +338,16 @@ export default function PersonDocumentsPage() {
                           </p>
                         </div>
                       </div>
-                      {isOwner && (
+                      {(isOwner || canDeleteAny) && (
                         <div className="flex shrink-0 gap-3">
-                          <button
-                            onClick={() => openEditModal(doc)}
-                            className="text-xs font-medium text-slate-400 hover:text-teal"
-                          >
-                            Edit
-                          </button>
+                          {isOwner && (
+                            <button
+                              onClick={() => openEditModal(doc)}
+                              className="text-xs font-medium text-slate-400 hover:text-teal"
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             onClick={() => handleDelete(doc)}
                             disabled={deletingId === doc.id}
@@ -531,7 +535,7 @@ export default function PersonDocumentsPage() {
                     }
                   />
                   <p className="mt-1.5 text-xs text-slate-400">
-                    PDF, PNG, JPG, WEBP, or GIF — up to 2MB.
+                    PDF, PNG, JPG, WEBP, or GIF — up to 4MB.
                   </p>
                 </div>
               )}
